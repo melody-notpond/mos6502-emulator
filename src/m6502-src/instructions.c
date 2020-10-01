@@ -70,6 +70,26 @@ m65_instr___c(sbc, ~)
 
 #undef m65_instr___c
 
+// Tests the accumulator against some data in memory.
+// Implemented opcodes:
+// - 24 - bit $zero page
+// - 2C - bit $absolute
+bool m65_instr_bit(m6502_t* cpu)
+{
+	switch (cpu->ipc)
+	{
+		// cycle 1 - perform and and fetch next operation
+		case 0:
+			cpu->alu.c = cpu->a & cpu->pins.data;
+			cpu->flags = (cpu->flags & 0x3D)
+					   | (cpu->alu.c & 0x80)
+					   | (cpu->alu.c & 0x40)
+					   | (cpu->alu.c == 0) << 1;
+		default:
+			return true;
+	}
+}
+
 // Branches to an address relative to the program counter based on a condition.
 // Length: 2 bytes / 1 word
 // Time: 2 cycles + 1 if branching + 1 if page boundary crossed
@@ -772,7 +792,7 @@ m65_instr_t__(x, s);
 // The jump table for all implemented regular instructions.
 const instr_fn instructions[3][8] = {
 	{
-		NULL		 , NULL			, m65_instr_jpa, m65_instr_jpi,
+		NULL		 , m65_instr_bit, m65_instr_jpa, m65_instr_jpi,
 		m65_instr_sty, m65_instr_ldy, m65_instr_cpy, m65_instr_cpx
 	},
 	{
