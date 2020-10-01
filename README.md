@@ -7,11 +7,7 @@ A MOS6502 Emulator written in C.
 - Recheck cpu cycles for accuracy
 
 ### Missing instructions:
-- `ORA`
-- `AND`
-- `EOR`
 - `ASL`
 - `ROL`
 - `LSR`
 - `ROR`
-- `BIT`
