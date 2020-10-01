@@ -70,6 +70,60 @@ m65_instr___c(sbc, ~)
 
 #undef m65_instr___c
 
+// Does a logic operation (and, or, xor) to the accumulator.
+// Implemented opcodes:
+// - 29 - and #immediate
+// - 25 - and $zero page
+// - 35 - and $zero page, x
+// - 2D - and $absolute
+// - 3D - and $absolute, x
+// - 39 - and $absolute, y
+// - 21 - and ($zero page, x)
+// - 31 - and ($zero page), y
+//
+// - 49 - eor #immediate
+// - 45 - eor $zero page
+// - 55 - eor $zero page, x
+// - 4D - eor $absolute
+// - 5D - eor $absolute, x
+// - 59 - eor $absolute, y
+// - 41 - eor ($zero page, x)
+// - 51 - eor ($zero page), y
+//
+// - 09 - ora #immediate
+// - 05 - ora $zero page
+// - 15 - ora $zero page, x
+// - 0D - ora $absolute
+// - 1D - ora $absolute, x
+// - 19 - ora $absolute, y
+// - 01 - ora ($zero page, x)
+// - 11 - ora ($zero page), y
+#define m65_instr_aox(mem, op)							\
+bool m65_instr_##mem(m6502_t* cpu)						\
+{														\
+	switch (cpu->ipc)									\
+	{													\
+		/* cycle 1 - do nothing */						\
+		case 0:											\
+			return false;								\
+														\
+		/* cycle 2 - perform the operation and fetch */	\
+		case 1:											\
+			cpu->a op cpu->pins.data;					\
+			cpu->flags = (cpu->flags & 0x7D)			\
+					   | (cpu->a & 0x80)				\
+					   | (cpu->a == 0) << 1;			\
+		default:										\
+			return true;								\
+	}													\
+}
+
+m65_instr_aox(and, &=)
+m65_instr_aox(ora, |=)
+m65_instr_aox(xor, ^=) // why is xor called eor??? why????????
+
+#undef m65_instr_aox
+
 // Tests the accumulator against some data in memory.
 // Implemented opcodes:
 // - 24 - bit $zero page
@@ -78,8 +132,12 @@ bool m65_instr_bit(m6502_t* cpu)
 {
 	switch (cpu->ipc)
 	{
-		// cycle 1 - perform and and fetch next operation
+		// cycle 1 - do nothing
 		case 0:
+			return false;
+
+		// cycle 2 - test value and fetch next operation
+		case 1:
 			cpu->alu.c = cpu->a & cpu->pins.data;
 			cpu->flags = (cpu->flags & 0x3D)
 					   | (cpu->alu.c & 0x80)
@@ -796,7 +854,7 @@ const instr_fn instructions[3][8] = {
 		m65_instr_sty, m65_instr_ldy, m65_instr_cpy, m65_instr_cpx
 	},
 	{
-		NULL		 , NULL			, NULL		   , m65_instr_adc,
+		m65_instr_ora, m65_instr_and, m65_instr_xor, m65_instr_adc,
 		m65_instr_sta, m65_instr_lda, m65_instr_cmp, m65_instr_sbc
 	},
 	{
