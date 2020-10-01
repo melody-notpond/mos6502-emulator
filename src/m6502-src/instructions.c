@@ -272,35 +272,25 @@ bool m65_instr_jpa(m6502_t* cpu)
 {
 	switch (cpu->ipc)
 	{
+		// cycle 1 - read low byte
 		case 0:
-			goto ipc_0;
+			cpu->pins.rw = READ;
+			cpu->pins.addr = cpu->pc++;
+			return false;
+
+		// cycle 2 - read high byte
 		case 1:
-			goto ipc_1;
+			cpu->addr_buf = cpu->pins.data;
+			cpu->pins.rw = READ;
+			cpu->pins.addr = cpu->pc;
+			return false;
+
+		// cycle 3 - set program counter (ie, jump)
 		case 2:
-			goto ipc_2;
+			cpu->pc = cpu->pins.data << 8 | cpu->addr_buf;
 		default:
-			goto ipc_ret;
+			return true;
 	}
-
-	// cycle 1 - read low byte
-ipc_0:
-	cpu->pins.rw = READ;
-	cpu->pins.addr = cpu->pc++;
-	return false;
-
-	// cycle 2 - read high byte
-ipc_1:
-	cpu->addr_buf = cpu->pins.data;
-	cpu->pins.rw = READ;
-	cpu->pins.addr = cpu->pc;
-	return false;
-
-	// cycle 3 - set program counter (ie, jump)
-ipc_2:
-	cpu->pc = cpu->pins.data << 8 | cpu->addr_buf;
-
-ipc_ret:
-	return true;
 }
 
 // Jumps to an address.
@@ -312,56 +302,42 @@ bool m65_instr_jpi(m6502_t* cpu)
 {
 	switch(cpu->ipc)
 	{
+		// cycle 1 - read low byte of address
 		case 0:
-			goto ipc_0;
+			cpu->pins.rw = READ;
+			cpu->pins.addr = cpu->pc++;
+			return false;
+
+		// cycle 2 - read high byte of address
 		case 1:
-			goto ipc_1;
+			cpu->addr_buf = cpu->pins.data;
+			cpu->pins.rw = READ;
+			cpu->pins.addr = cpu->pc++;
+			return false;
+
+		// cycle 3 - read low byte of location
 		case 2:
-			goto ipc_2;
+			cpu->pins.rw = READ;
+			cpu->pins.addr = cpu->pins.data << 8 | cpu->addr_buf;
+			return false;
+
+		// cycle 4 - read high byte of location
 		case 3:
-			goto ipc_3;
+			cpu->addr_buf = cpu->pins.data;
+			cpu->pins.rw = READ;
+
+			// This instruction doesn't update the high byte when crossing a page boundary.
+			if ((cpu->pins.addr & 0xff) == 0xff)
+				cpu->pins.addr &= 0xff00;
+			else cpu->pins.addr++;
+			return false;
+
+		// cycle 5 - set program counter (ie, jump to location)
 		case 4:
-			goto ipc_4;
+			cpu->pc = cpu->pins.data << 8 | cpu->addr_buf;
 		default:
-			goto ipc_ret;
+			return true;
 	}
-
-	// cycle 1 - read low byte of address
-ipc_0:
-	cpu->pins.rw = READ;
-	cpu->pins.addr = cpu->pc++;
-	return false;
-
-	// cycle 2 - read high byte of address
-ipc_1:
-	cpu->addr_buf = cpu->pins.data;
-	cpu->pins.rw = READ;
-	cpu->pins.addr = cpu->pc++;
-	return false;
-
-	// cycle 3 - read low byte of location
-ipc_2:
-	cpu->pins.rw = READ;
-	cpu->pins.addr = cpu->pins.data << 8 | cpu->addr_buf;
-	return false;
-
-	// cycle 4 - read high byte of location
-ipc_3:
-	cpu->addr_buf = cpu->pins.data;
-	cpu->pins.rw = READ;
-
-	// This instruction doesn't update the high byte when crossing a page boundary.
-	if ((cpu->pins.addr & 0xff) == 0xff)
-		 cpu->pins.addr &= 0xff00;
-	else cpu->pins.addr++;
-	return false;
-
-	// cycle 5 - set program counter (ie, jump to location)
-ipc_4:
-	cpu->pc = cpu->pins.data << 8 | cpu->addr_buf;
-
-ipc_ret:
-	return true;
 }
 
 // Calls a subroutine
@@ -373,61 +349,46 @@ bool m65_instr_jsr(m6502_t* cpu)
 {
 	switch (cpu->ipc)
 	{
+		// cycle 1 - read low byte of address
 		case 0:
-			goto ipc_0;
+			cpu->pins.rw = READ;
+			cpu->pins.addr = cpu->pc++;
+			return false;
+
+		// cycle 2 - read high byte of address
 		case 1:
-			goto ipc_1;
+			cpu->addr_buf = cpu->pins.data;
+			cpu->pins.rw = READ;
+			cpu->pins.addr = cpu->pc;
+			return false;
+
+		// cycle 3 - push high byte of the program counter to the stack
 		case 2:
-			goto ipc_2;
+			cpu->addr_buf |= cpu->pins.data << 8;
+			cpu->pins.rw = WRITE;
+			cpu->pins.addr = 0x0100 | cpu->s;
+			cpu->pins.data = (cpu->pc & 0xff00) >> 8;
+			return false;
+
+		// cycle 4 - decrement stack pointer
 		case 3:
-			goto ipc_3;
+			cpu->s--;
+			return false;
+
+		// cycle 5 - push low byte of the program counter to stack
 		case 4:
-			goto ipc_4;
+			cpu->pins.rw = WRITE;
+			cpu->pins.addr = 0x0100 | cpu->s;
+			cpu->pins.data = cpu->pc & 0xff;
+			return false;
+
+		// cycle 6 - decrement stack pointer and fetch
 		case 5:
-			goto ipc_5;
+			cpu->s--;
+			cpu->pc = cpu->addr_buf;
 		default:
-			goto ipc_ret;
+			return true;
 	}
-
-	// cycle 1 - read low byte of address
-ipc_0:
-	cpu->pins.rw = READ;
-	cpu->pins.addr = cpu->pc++;
-	return false;
-
-	// cycle 2 - read high byte of address
-ipc_1:
-	cpu->addr_buf = cpu->pins.data;
-	cpu->pins.rw = READ;
-	cpu->pins.addr = cpu->pc;
-	return false;
-
-	// cycle 3 - push high byte of the program counter to the stack
-ipc_2:
-	cpu->addr_buf |= cpu->pins.data << 8;
-	cpu->pins.rw = WRITE;
-	cpu->pins.addr = 0x0100 | cpu->s;
-	cpu->pins.data = (cpu->pc & 0xff00) >> 8;
-	return false;
-
-	// decrement stack pointer
-ipc_3:
-	cpu->s--;
-	return false;
-
-	// push low byte of the program counter to stack
-ipc_4:
-	cpu->pins.rw = WRITE;
-	cpu->pins.addr = 0x0100 | cpu->s;
-	cpu->pins.data = cpu->pc & 0xff;
-	return false;
-
-	// decrement stack pointer and fetch
-ipc_5:
-	cpu->s--;
-	cpu->pc = cpu->addr_buf;
-ipc_ret:
-	return true;
 }
 
 // Loads a value into a register.
@@ -452,31 +413,23 @@ ipc_ret:
 // - B4 - ldy $zero page, X
 // - AC - ldy $absolute
 // - BC - ldy $absolute, X
-#define m65_instr_ld_(reg)																\
-bool m65_instr_ld##reg (m6502_t* cpu)													\
-{																						\
-	switch (cpu->ipc)																	\
-	{																					\
-		case 0:																			\
-			goto ipc_0;																	\
-		case 1:																			\
-			goto ipc_1;																	\
-		default:																		\
-			goto ipc_ret;																\
-	}																					\
-																						\
-	/* cycle 1 - read value	*/ 															\
-ipc_0:																					\
-	cpu->pins.rw = READ;																\
-	return false;																		\
-																						\
-	/* cycle 2 - store in register, update flags, and fetch next instruction */			\
-ipc_1:																					\
-	cpu->reg = cpu->pins.data;															\
-	cpu->flags = (cpu->flags & 0x7D) | (cpu->reg & 0x80) << 7 | (cpu->reg == 0) << 1;	\
-																						\
-ipc_ret:																				\
-	return true;																		\
+#define m65_instr_ld_(reg)																		\
+bool m65_instr_ld##reg (m6502_t* cpu)															\
+{																								\
+	switch (cpu->ipc)																			\
+	{																							\
+		/* cycle 1 - read value	*/ 																\
+		case 0:																					\
+			cpu->pins.rw = READ;																\
+			return false;																		\
+																								\
+		/* cycle 2 - store in register, update flags, and fetch next instruction */				\
+		case 1:																					\
+			cpu->reg = cpu->pins.data;															\
+			cpu->flags = (cpu->flags & 0x7D) | (cpu->reg & 0x80) << 7 | (cpu->reg == 0) << 1;	\
+		default:																				\
+			return true;																		\
+	}																							\
 }
 
 m65_instr_ld_(a)
@@ -507,31 +460,24 @@ bool m65_instr_nop(m6502_t* cpu)
 // Implemented opcodes:
 // - 48 - pha
 // - 08 - php
-#define m65_instr_ph_(mnem, reg)							\
-bool m65_instr_ph##mnem (m6502_t* cpu)						\
-{															\
-	switch (cpu->ipc)										\
-	{														\
-		case 0:												\
-			goto ipc_0;										\
-		case 1:												\
-			goto ipc_1;										\
-		default:											\
-			goto ipc_ret;									\
-	}														\
-															\
-	/* cycle 1 - put accumulator in $0100+stack pointer */	\
-ipc_0:														\
-	cpu->pins.rw = WRITE;									\
-	cpu->pins.addr = 0x0100 | cpu->s;						\
-	cpu->pins.data = cpu->reg;								\
-	return false;											\
-															\
-	/* cycle 2 - decrement stack pointer and fetch */		\
-ipc_1:														\
-	cpu->s--;												\
-ipc_ret:													\
-	return true;											\
+#define m65_instr_ph_(mnem, reg)									\
+bool m65_instr_ph##mnem (m6502_t* cpu)								\
+{																	\
+	switch (cpu->ipc)												\
+	{																\
+		/* cycle 1 - put accumulator in $0100+stack pointer */		\
+		case 0:														\
+			cpu->pins.rw = WRITE;									\
+			cpu->pins.addr = 0x0100 | cpu->s;						\
+			cpu->pins.data = cpu->reg;								\
+			return false;											\
+																	\
+		/* cycle 2 - decrement stack pointer and fetch */			\
+		case 1:														\
+			cpu->s--;												\
+		default:													\
+			return true;											\
+	}																\
 }
 
 m65_instr_ph_(a, a)
