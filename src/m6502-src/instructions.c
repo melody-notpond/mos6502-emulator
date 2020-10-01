@@ -192,12 +192,60 @@ bool m65_instr_brk(m6502_t* cpu)
 	}
 }
 
+// Compares the value of a register to another value.
+// Implemented opcodes:
+// - C9 - cmp #immediate
+// - D5 - cmp $zero page
+// - D5 - cmp $zero page, x
+// - CD - cmp $absolute
+// - DD - cmp $absolute, x
+// - D9 - cmp $absolute, y
+// - C1 - cmp ($zero page, x)
+// - D1 - cmp ($zero page), y
+//
+// - E0 - cpx #immediate
+// - E4 - cpx $zero page
+// - EC - cpx $absolute
+//
+// - C0 - cpy #immediate
+// - C4 - cpy $zero page
+// - CC - cpy $absolute
+#define m65_instr_cmp_reg(mem, reg)												\
+bool m65_instr_##mem(m6502_t* cpu)											\
+{																			\
+	switch (cpu->ipc)														\
+	{																		\
+		/* cycle 1 - get value */											\
+		case 0:																\
+			return false;													\
+																			\
+		/* cycle 2 - compare the register to the value */					\
+		case 1:																\
+			cpu->alu.a = cpu->a;											\
+			cpu->alu.b = cpu->pins.data;									\
+			cpu->alu.c = cpu->alu.a - cpu->alu.c;							\
+			cpu->flags = (cpu->flags & 0x7C)								\
+					   | (cpu->alu.c & 0x80)								\
+					   | (cpu->alu.c == 0) << 1								\
+					   | (cpu->a > cpu->alu.c || cpu->alu.b > cpu->alu.c);	\
+		default:															\
+			return true;													\
+	}																		\
+}
+
+m65_instr_cmp_reg(cmp, a)
+m65_instr_cmp_reg(cpx, x)
+m65_instr_cmp_reg(cpy, y)
+
+#undef m65_instr_cmp_reg
+
 // Increments or decrements a value in memory.
 // Implemented opcodes:
 // - E6 - inc $zero page
 // - F6 - inc $zero page, x
 // - EE - inc $absolute
 // - FE - inc $absolute, x
+//
 // - C6 - dec $zero page
 // - D6 - dec $zero page, x
 // - CE - dec $absolute
@@ -725,11 +773,11 @@ m65_instr_t__(x, s);
 const instr_fn instructions[3][8] = {
 	{
 		NULL		 , NULL			, m65_instr_jpa, m65_instr_jpi,
-		m65_instr_sty, m65_instr_ldy, NULL		   , NULL
+		m65_instr_sty, m65_instr_ldy, m65_instr_cpy, m65_instr_cpx
 	},
 	{
 		NULL		 , NULL			, NULL		   , m65_instr_adc,
-		m65_instr_sta, m65_instr_lda, NULL		   , m65_instr_sbc
+		m65_instr_sta, m65_instr_lda, m65_instr_cmp, m65_instr_sbc
 	},
 	{
 		NULL		 , NULL			, NULL		   , NULL,

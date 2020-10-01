@@ -15,6 +15,3 @@ A MOS6502 Emulator written in C.
 - `LSR`
 - `ROR`
 - `BIT`
-- `CMP`
-- `CPX`
-- `CPY`
